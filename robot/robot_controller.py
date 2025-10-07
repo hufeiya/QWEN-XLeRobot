@@ -6,6 +6,7 @@ import time
 import math
 import random
 import threading
+import subprocess
 import json
 import traceback
 # from HersheyFonts import HersheyFonts
@@ -75,6 +76,15 @@ class RobotController:
         # set a default convenience attribute for single-arm compatibility
         # prefer arm1, fall back to arm2 if only one is connected
         self.ua = self.robots.get('arm1') or self.robots.get('arm2')
+
+        # timer used to restore default face after a face_<name> call with timeout
+        self._reset_timer = None
+
+        # dynamically create face_<name> methods so voice_assistant can call them on robot_controller
+        try:
+            self._register_face_methods()
+        except Exception as e:
+            print(f"⚠️ 无法在 RobotController 上注册 face_ 方法: {e}")
 
         # (no external writing resources required)
     
@@ -412,3 +422,76 @@ class RobotController:
             return
         # call replay_from_file with the filename only
         self.replay_from_file("/home/neethu/lerobot-0.3.3/mytest/dual_arm_actions_huishou.json")
+
+    # ------------------------------------------------------------------
+    # ADB helpers and dynamic face_* methods (so voice_assistant can call robot_controller.face_xxx)
+    # ------------------------------------------------------------------
+    def _adb_broadcast(self, action: str, extras: dict = None):
+        extras = extras or {}
+
+        def _run():
+            cmd = ['adb', 'shell', 'am', 'broadcast', '-a', action]
+            for k, v in extras.items():
+                cmd.extend(['--es', k, str(v)])
+            try:
+                proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5)
+                if proc.returncode != 0:
+                    stderr = proc.stderr.decode('utf-8', errors='ignore')
+                    print(f"❌ adb broadcast failed: {stderr}")
+                else:
+                    out = proc.stdout.decode('utf-8', errors='ignore')
+                    print(f"adb broadcast sent: action={action} extras={extras} -> {out.strip()}")
+            except FileNotFoundError:
+                print("❌ adb not found: ensure platform-tools are installed and adb is in PATH")
+            except subprocess.TimeoutExpired:
+                print("❌ adb broadcast timed out")
+            except Exception as e:
+                print(f"❌ adb broadcast error: {e}")
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+    def _set_emotion(self, name: str, duration_seconds: int = 10):
+        if not name:
+            return
+        self._adb_broadcast('com.neethu.robotface.SET_EMOTION', extras={'emotion': name})
+
+        # cancel previous timer
+        try:
+            if self._reset_timer and self._reset_timer.is_alive():
+                self._reset_timer.cancel()
+        except Exception:
+            pass
+
+        if duration_seconds and duration_seconds > 0:
+            def _reset_later():
+                self._adb_broadcast('com.neethu.robotface.RESET')
+
+            self._reset_timer = threading.Timer(float(duration_seconds), _reset_later)
+            self._reset_timer.daemon = True
+            self._reset_timer.start()
+
+    def _register_face_methods(self):
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'phone', 'app', 'src', 'main', 'res', 'raw'))
+        if not os.path.isdir(base_dir):
+            base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'phone', 'app', 'src', 'main', 'res', 'raw'))
+        if not os.path.isdir(base_dir):
+            print(f"⚠️ RobotController: 未找到 raw 目录，跳过 face_ 方法注册：{base_dir}")
+            return
+
+        allowed_ext = {'.mp4', '.mov', '.m4v', '.webm', '.3gp'}
+        for fname in os.listdir(base_dir):
+            name, ext = os.path.splitext(fname)
+            if ext.lower() in allowed_ext:
+                method_name = f'face_{name}'
+                if hasattr(self, method_name):
+                    continue
+
+                def _make_method(n):
+                    def _method(duration_seconds: int = 10):
+                        print(f"🖼️ RobotController: 切换表情到 '{n}'，持续 {duration_seconds}s")
+                        self._set_emotion(n, duration_seconds)
+                    return _method
+
+                setattr(self, method_name, _make_method(name))
+                print(f"✅ RobotController 注册方法: {method_name}() 对应文件: {fname}")

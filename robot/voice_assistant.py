@@ -227,6 +227,11 @@ class DuplexCallback(MultiModalCallback):
             "move_up": self.robot_controller.move_up,
             "move_down": self.robot_controller.move_down,
             "wave_hand": self.robot_controller.wave_hand,
+            "face_default_face": self.robot_controller.face_default_face,
+            "face_flustered": self.robot_controller.face_flustered,
+            "face_happy_moon_eye": self.robot_controller.face_happy_moon_eye,
+            "face_sad_tear": self.robot_controller.face_sad_tear,
+            "face_scared": self.robot_controller.face_scared,
         }
 
     def _send_silence_worker(self):

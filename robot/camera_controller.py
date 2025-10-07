@@ -62,6 +62,8 @@ class CameraController:
             sys.exit(1)
         self.mode = 'ffmpeg'
 
+        # no dynamic face_* methods here; RobotController manages face methods centrally
+
     def _read_worker(self):
         # legacy continuous read worker removed; we capture on demand in capture_image_base64
         return
@@ -162,3 +164,5 @@ class CameraController:
             except Exception:
                 pass
         print("✅ 摄像头资源已释放。")
+
+    # CameraController does not expose face_* methods; RobotController handles face control centrally via adb
