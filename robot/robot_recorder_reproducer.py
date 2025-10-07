@@ -109,9 +109,18 @@ class DualArmActionRecorder:
             print("没有录制的动作可保存")
             return None
         
+        # Ensure output directory exists
+        output_dir = os.path.join(os.getcwd(), 'actions_recorded')
+        os.makedirs(output_dir, exist_ok=True)
+
         if filename is None:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"dual_arm_actions_{timestamp}.json"
+        else:
+            # If user provided a bare filename, ensure it's placed inside actions_recorded
+            # If user provided a path (contains os.sep), respect it
+            if not os.path.isabs(filename) and os.path.dirname(filename) == '':
+                filename = os.path.join(output_dir, filename)
         
         data = {
             'metadata': {
@@ -125,6 +134,16 @@ class DualArmActionRecorder:
             'actions': self.recorded_actions
         }
         
+        # Ensure filename has .json extension
+        if not filename.endswith('.json'):
+            filename = filename + '.json'
+
+        # If filename is not an absolute path and not already inside output_dir, ensure it's inside
+        if not os.path.isabs(filename):
+            if not os.path.commonpath([os.path.abspath(filename), output_dir]) == os.path.abspath(output_dir):
+                # join to output_dir
+                filename = os.path.join(output_dir, os.path.basename(filename))
+
         with open(filename, 'w') as f:
             json.dump(data, f, indent=2)
         
@@ -654,39 +673,47 @@ def main():
             
             elif choice == '3':
                 # 复现模式
-                # 列出可用的动作文件
-                json_files = [f for f in os.listdir('.') if f.endswith('.json') and f.startswith('dual_arm_actions_')]
+                # 列出 actions_recorded 目录下的 JSON 文件（不再要求特定前缀）
+                actions_dir = os.path.join(os.getcwd(), 'actions_recorded')
+                if not os.path.isdir(actions_dir):
+                    print("没有找到录制的双臂动作文件 (actions_recorded 目录不存在)")
+                    continue
+
+                json_files = [f for f in os.listdir(actions_dir) if f.endswith('.json')]
                 if not json_files:
                     print("没有找到录制的双臂动作文件")
                     continue
-                
+
                 print("\n可用的双臂动作文件:")
                 for i, filename in enumerate(json_files):
                     print(f"{i+1}. {filename}")
-                
-                file_choice = input("请选择文件编号或输入文件名: ").strip()
+
+                file_choice = input("请选择文件编号或输入文件名/完整路径: ").strip()
                 try:
                     if file_choice.isdigit():
                         file_index = int(file_choice) - 1
                         if 0 <= file_index < len(json_files):
-                            filename = json_files[file_index]
+                            filename = os.path.join(actions_dir, json_files[file_index])
                         else:
                             print("无效的选择")
                             continue
                     else:
                         filename = file_choice
+                        # If user provided a bare name (no path), look in actions_dir
+                        if not os.path.isabs(filename) and os.path.dirname(filename) == '':
+                            filename = os.path.join(actions_dir, filename)
                         if not filename.endswith('.json'):
                             filename += '.json'
-                    
+
                     # 加载动作文件
                     if recorder.load_from_file(filename):
                         # 询问复现速度
                         speed_input = input("请输入复现速度因子 (默认 1.0): ").strip()
                         speed_factor = float(speed_input) if speed_input else 1.0
-                        
+
                         # 开始复现
                         replayer.replay_actions(recorder.recorded_actions, speed_factor)
-                
+
                 except Exception as e:
                     print(f"复现失败: {e}")
                     traceback.print_exc()
