@@ -1,0 +1,7 @@
+dashscope==1.24.6
+keyboard==0.13.5
+lerobot==0.3.3
+lerobot.egg==info
+numpy==2.3.3
+Pillow==11.3.0
+PyAudio==0.2.13
