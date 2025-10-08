@@ -156,6 +156,11 @@ class TerminalKeyListener:
                 if '\x1b' in self.pressed:
                     self.pressed.remove('\x1b')
                     return True
+            # support single-character keys (e.g., 'w','a','s','d') from terminal input
+            if isinstance(key_name, str) and len(key_name) == 1:
+                if key_name in self.pressed:
+                    self.pressed.remove(key_name)
+                    return True
         return False
 
     def stop(self):
@@ -395,6 +400,8 @@ class DuplexCallback(MultiModalCallback):
                 print(f"📝 [CTX] VQA 响应已捕获，可用于后续写入。")
 
     def on_speech_content(self, payload):
+        # 说话时，空闲计时重置
+        self.last_interaction_time = time.time()
         if self.manager.is_in_autonomous_speech:
             return
 
@@ -594,6 +601,25 @@ class DuplexVoiceAssistant:
                     print("\n🛑 ESC 退出")
                     self.is_running = False
                     break
+
+                # WSAD control for wheel base when not recording
+                try:
+                    if not recording:
+                        # w: forward, s: back, a: turn left, d: turn right
+                        if check_key_pressed('w'):
+                            print("[KB] WSAD: W pressed -> base forward")
+                            self.dispatch_robot_task(self.robot_controller.base_forward, args=(0.5,))
+                        if check_key_pressed('s'):
+                            print("[KB] WSAD: S pressed -> base back")
+                            self.dispatch_robot_task(self.robot_controller.base_back, args=(0.5,))
+                        if check_key_pressed('a'):
+                            print("[KB] WSAD: A pressed -> base turn left")
+                            self.dispatch_robot_task(self.robot_controller.base_turn_left, args=(0.4,))
+                        if check_key_pressed('d'):
+                            print("[KB] WSAD: D pressed -> base turn right")
+                            self.dispatch_robot_task(self.robot_controller.base_turn_right, args=(0.4,))
+                except Exception:
+                    pass
 
                 time.sleep(0.01)
             except Exception as e:
